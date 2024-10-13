@@ -5,6 +5,8 @@ const jwt = require('jsonwebtoken'); // For authentication
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+require('dotenv').config(); // This loads the .env file
+
 // Middleware for JSON parsing
 app.use(express.json());
 
