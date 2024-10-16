@@ -2,6 +2,9 @@ const express = require('express');
 const path = require('path'); // To handle file paths
 const multer = require('multer'); // For file uploads
 const jwt = require('jsonwebtoken'); // For authentication
+const bcrypt = require('bcryptjs'); // For password hashing
+const mongoose = require('mongoose'); // To connect with MongoDB
+const User = require('./models/User'); // Assuming you have a User model
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -13,10 +16,27 @@ app.use(express.json());
 // Serve static files (for profile pictures)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Simple test route to ensure API is working
-app.get('/', (req, res) => {
-    res.send('doXXd Backend API is working!');
-});
+// MongoDB connection
+mongoose.connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+})
+.then(() => console.log('MongoDB connected'))
+.catch((err) => console.error(err));
+
+// Middleware to verify JWT token
+const authenticateToken = (req, res, next) => {
+    const token = req.headers['authorization']?.split(' ')[1];
+    if (!token) return res.status(401).json({ msg: 'No token, authorization denied' });
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded;
+        next();
+    } catch (err) {
+        res.status(401).json({ msg: 'Token is not valid' });
+    }
+};
 
 // Set up storage for Multer to handle file uploads (profile pictures)
 const storage = multer.diskStorage({
@@ -27,28 +47,102 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Middleware to verify JWT token
-const authenticateToken = (req, res, next) => {
-    const token = req.headers['authorization']?.split(' ')[1];
-    if (!token) return res.status(401).json({ msg: 'No token, authorization denied' });
+// Test route to ensure API is working
+app.get('/', (req, res) => {
+    res.send('doXXd Backend API is working!');
+});
+
+// Route: Register a new user
+app.post('/api/register', async (req, res) => {
+    const { username, email, password } = req.body;
+    
+    try {
+        // Check if the user already exists
+        let user = await User.findOne({ email });
+        if (user) {
+            return res.status(400).json({ msg: 'User already exists' });
+        }
+
+        // Create a new user instance
+        user = new User({
+            username,
+            email,
+            password
+        });
+
+        // Hash the password before saving
+        const salt = await bcrypt.genSalt(10);
+        user.password = await bcrypt.hash(password, salt);
+
+        await user.save(); // Save the user to the database
+
+        // Generate a JWT token for the user
+        const payload = {
+            user: {
+                id: user.id
+            }
+        };
+
+        jwt.sign(
+            payload,
+            process.env.JWT_SECRET, // Your JWT secret key
+            { expiresIn: '1h' },
+            (err, token) => {
+                if (err) throw err;
+                res.json({ token }); // Return the token to the frontend
+            }
+        );
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server error');
+    }
+});
+
+// Route: Login a user
+app.post('/api/login', async (req, res) => {
+    const { email, password } = req.body;
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET); // Ensure to replace with your JWT secret
-        req.user = decoded;
-        next();
+        // Check if the user exists
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(400).json({ msg: 'Invalid credentials' });
+        }
+
+        // Compare password with the hashed one
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ msg: 'Invalid credentials' });
+        }
+
+        // Generate a JWT token for the user
+        const payload = {
+            user: {
+                id: user.id
+            }
+        };
+
+        jwt.sign(
+            payload,
+            process.env.JWT_SECRET,
+            { expiresIn: '1h' },
+            (err, token) => {
+                if (err) throw err;
+                res.json({ token }); // Return the token to the frontend
+            }
+        );
     } catch (err) {
-        res.status(401).json({ msg: 'Token is not valid' });
+        console.error(err.message);
+        res.status(500).send('Server error');
     }
-};
+});
 
 // Route: Get Profile
 app.get('/api/profile', authenticateToken, async (req, res) => {
     try {
-        // Assuming you have a User model to fetch user info from the database
-        const user = await User.findById(req.user.id); 
+        const user = await User.findById(req.user.id);
         if (!user) return res.status(404).json({ msg: 'User not found' });
 
-        // Send back user data (excluding sensitive info)
         res.json({
             success: true,
             user: {
@@ -68,16 +162,14 @@ app.post('/api/profile', authenticateToken, upload.single('profilePic'), async (
         const user = await User.findById(req.user.id);
         if (!user) return res.status(404).json({ msg: 'User not found' });
 
-        // Update the username and bio if provided
         if (req.body.username) user.username = req.body.username;
         if (req.body.bio) user.bio = req.body.bio;
 
-        // If a new profile picture is uploaded, update the profilePicUrl
         if (req.file) {
             user.profilePicUrl = `/uploads/${req.file.filename}`;
         }
 
-        await user.save(); // Save updated user info
+        await user.save();
 
         res.json({ success: true, msg: 'Profile updated successfully!' });
     } catch (err) {
@@ -89,6 +181,3 @@ app.post('/api/profile', authenticateToken, upload.single('profilePic'), async (
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
-
-const profileRoutes = require('./routes/profile');
-app.use('/api/profile', authenticateToken, profileRoutes); // Profile routes need authentication
