@@ -4,22 +4,18 @@ const multer = require('multer'); // For file uploads
 const jwt = require('jsonwebtoken'); // For authentication
 const bcrypt = require('bcryptjs'); // For password hashing
 const mongoose = require('mongoose'); // To connect with MongoDB
-const cors = require('cors'); // To handle CORS
 const User = require('./models/User'); // Assuming you have a User model
+const cors = require('cors'); // To handle CORS errors
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 require('dotenv').config(); // This loads the .env file
 
-// CORS configuration
-app.use(cors({
-    origin: 'https://doxxd.me', // Replace with your frontend domain
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true,
-}));
-
 // Middleware for JSON parsing
 app.use(express.json());
+
+// Enable CORS
+app.use(cors());
 
 // Serve static files (for profile pictures)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -57,13 +53,17 @@ const upload = multer({ storage });
 
 // Test route to ensure API is working
 app.get('/', (req, res) => {
-    res.send('doXXd Backend API is working!');
+    res.json({ msg: 'doXXd Backend API is working!' }); // Return response in JSON format
 });
 
 // Route: Register a new user
 app.post('/api/register', async (req, res) => {
     const { username, email, password } = req.body;
-    
+
+    if (!username || !email || !password) {
+        return res.status(400).json({ msg: 'All fields are required' });
+    }
+
     try {
         // Check if the user already exists
         let user = await User.findOne({ email });
@@ -97,18 +97,22 @@ app.post('/api/register', async (req, res) => {
             { expiresIn: '1h' },
             (err, token) => {
                 if (err) throw err;
-                res.json({ token });
+                res.json({ token }); // Return the token to the frontend
             }
         );
     } catch (err) {
         console.error(err.message);
-        res.status(500).send('Server error');
+        res.status(500).json({ msg: 'Server error' }); // Always return JSON formatted error
     }
 });
 
 // Route: Login a user
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
+
+    if (!email || !password) {
+        return res.status(400).json({ msg: 'All fields are required' });
+    }
 
     try {
         // Check if the user exists
@@ -141,7 +145,7 @@ app.post('/api/login', async (req, res) => {
         );
     } catch (err) {
         console.error(err.message);
-        res.status(500).send('Server error');
+        res.status(500).json({ msg: 'Server error' }); // Return JSON formatted error
     }
 });
 
