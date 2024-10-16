@@ -89,3 +89,6 @@ app.post('/api/profile', authenticateToken, upload.single('profilePic'), async (
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
+
+const profileRoutes = require('./routes/profile');
+app.use('/api/profile', authenticateToken, profileRoutes); // Profile routes need authentication
