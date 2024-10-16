@@ -78,6 +78,12 @@ app.post('/api/register', async (req, res) => {
             password
         });
 
+        // MongoDB connection
+mongoose.connect(process.env.MONGO_URI)
+.then(() => console.log('MongoDB connected'))
+.catch((err) => console.error('MongoDB connection error:', err));
+
+
         // Hash the password before saving
         const salt = await bcrypt.genSalt(10);
         user.password = await bcrypt.hash(password, salt);
