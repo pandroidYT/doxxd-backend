@@ -4,11 +4,19 @@ const multer = require('multer'); // For file uploads
 const jwt = require('jsonwebtoken'); // For authentication
 const bcrypt = require('bcryptjs'); // For password hashing
 const mongoose = require('mongoose'); // To connect with MongoDB
+const cors = require('cors'); // To handle CORS
 const User = require('./models/User'); // Assuming you have a User model
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 require('dotenv').config(); // This loads the .env file
+
+// CORS configuration
+app.use(cors({
+    origin: 'https://doxxd.me', // Replace with your frontend domain
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true,
+}));
 
 // Middleware for JSON parsing
 app.use(express.json());
@@ -89,7 +97,7 @@ app.post('/api/register', async (req, res) => {
             { expiresIn: '1h' },
             (err, token) => {
                 if (err) throw err;
-                res.json({ token }); // Return the token to the frontend
+                res.json({ token });
             }
         );
     } catch (err) {
