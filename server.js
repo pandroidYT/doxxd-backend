@@ -15,13 +15,14 @@ app.use(cors());
 app.use('/uploads', express.static('uploads'));
 
 // MongoDB connection
-const mongoURI = process.env.MONGO_URI;
+const mongoURI = process.env.MONGODB_URI; // Updated to match your environment variable
 if (!mongoURI) {
     console.error('MongoDB URI not found in environment variables!');
     process.exit(1); // Exit the application if no URI is provided
 }
 
-mongoose.connect(mongoURI)
+// Added connection options to prevent deprecation warnings
+mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true })
     .then(() => console.log('MongoDB connected successfully'))
     .catch(err => {
         console.error('MongoDB connection error:', err);
@@ -38,4 +39,4 @@ app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
 
-console.log('Environment Variables:', process.env);
+// Removed logging of environment variables for security in production
