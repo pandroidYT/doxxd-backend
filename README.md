@@ -2,7 +2,9 @@
 
 The backend for **DoXXd**: a social feed where every post is anonymous, until someone spends a dox token to unmask its author.
 
-**Stack:** Node 22 · TypeScript · [Hono](https://hono.dev) · PostgreSQL · [Drizzle ORM](https://orm.drizzle.team) · Zod · Vitest
+**Stack:** Node 22 · TypeScript · [Hono](https://hono.dev) · [PGlite](https://pglite.dev) (Postgres that runs inside Node) · [Drizzle ORM](https://orm.drizzle.team) · Zod · Vitest
+
+This server also serves the [website](https://github.com/pandroidYT/doxxd-frontend), so the whole thing is one program on one port, with no database to install.
 
 ## How the game works
 
@@ -15,42 +17,35 @@ The backend for **DoXXd**: a social feed where every post is anonymous, until so
 
 The anonymity rule is enforced in one place, `src/posts.ts`. The author's username isn't even selected from the database until the post is doxxed.
 
-## Run it locally
+## Run it
 
-You need Node 22+ and Docker (or any Postgres 15+).
+You only need [Node.js 22+](https://nodejs.org) and [Git](https://git-scm.com). Put both repos in the same folder:
 
 ```bash
-docker compose up -d          # starts Postgres on localhost:5432
-cp .env.example .env          # then put a long random string in JWT_SECRET
-npm install
-npm run db:migrate
-npm run dev                   # http://localhost:3000
+git clone -b claude/friends-website-project-mmmg5p https://github.com/pandroidYT/doxxd-backend
+git clone -b claude/friends-website-project-mmmg5p https://github.com/pandroidYT/doxxd-frontend
+cd doxxd-backend
+npm run setup     # first time, and again after pulling new code
+npm start
 ```
 
-Then start the [frontend](https://github.com/pandroidYT/doxxd-frontend).
+Then open **http://localhost:3000**. It also prints a network address that other devices on the same Wi-Fi can use.
+
+- Accounts and posts are saved in `data/`. Delete that folder to start over.
+- Settings (port, folders) are optional. See `.env.example`.
+- To work on the code with live reload, run `npm run dev` here and `npm run dev` in `doxxd-frontend`, then open http://localhost:5173.
 
 ## Tests
 
 ```bash
-docker compose up -d
 npm test
 ```
 
-The tests create (and wipe) a separate `doxxd_test` database. Point `TEST_DATABASE_URL` elsewhere if needed.
-
-## Deploy (free)
-
-1. **Database:** create a free Postgres on [Neon](https://neon.tech) or [Supabase](https://supabase.com) and copy its connection string.
-2. **API:** on [Render](https://render.com), choose *New → Blueprint* and pick this repo (it reads `render.yaml`). Set:
-   - `DATABASE_URL`: the connection string from step 1
-   - `CORS_ORIGINS`: your frontend's URL, e.g. `https://doxxd.vercel.app`
-   - `JWT_SECRET` is generated for you.
-
-   `npm start` runs migrations automatically before starting the server.
+Each test file gets its own in-memory database, so nothing to set up.
 
 ## API
 
-All bodies are JSON. Send `Authorization: Bearer <token>` for anything that needs a login.
+Every path below is under `/api` (e.g. `/api/posts`). All bodies are JSON. Send `Authorization: Bearer <token>` for anything that needs a login.
 
 | Method | Path | Auth | What it does |
 | --- | --- | --- | --- |
@@ -79,5 +74,7 @@ Edit `src/db/schema.ts`, then:
 
 ```bash
 npm run db:generate   # writes a new SQL file into drizzle/
-npm run db:migrate
 ```
+
+The new migration is applied automatically the next time the server starts.
+

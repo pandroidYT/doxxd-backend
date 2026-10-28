@@ -1,20 +1,21 @@
 import { randomInt } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { afterAll, beforeEach } from "vitest";
+import { afterAll, beforeAll, beforeEach } from "vitest";
 import { createApp } from "../src/app.js";
 import { createDb } from "../src/db/client.js";
+import { runMigrations } from "../src/db/migrate.js";
 import { createAuth } from "../src/lib/auth.js";
-import { TEST_DATABASE_URL } from "./env.js";
 
-/** Spins up the app against the test database, wiped before each test. */
+/** Spins up the app against a fresh in-memory database, wiped before each test. */
 export function setupApp() {
-  const { db, client } = createDb(TEST_DATABASE_URL);
+  const { db, client } = createDb();
   const app = createApp({ db, auth: createAuth("test-secret-test-secret-test-secret") });
 
+  beforeAll(() => runMigrations(db));
   beforeEach(async () => {
     await db.execute(sql`truncate users, posts, likes, notifications cascade`);
   });
-  afterAll(() => client.end());
+  afterAll(() => client.close());
 
   // Each call looks like a different client so tests don't trip the rate limiter.
   async function call(method: string, path: string, opts: { token?: string; body?: unknown; ip?: string } = {}) {
@@ -23,7 +24,7 @@ export function setupApp() {
     };
     if (opts.token) headers.authorization = `Bearer ${opts.token}`;
     if (opts.body !== undefined) headers["content-type"] = "application/json";
-    const res = await app.request(path, {
+    const res = await app.request(`/api${path}`, {
       method,
       headers,
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),

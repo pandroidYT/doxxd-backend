@@ -1,29 +1,50 @@
+import { randomBytes } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { networkInterfaces } from "node:os";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { createDb } from "./db/client.js";
+import { runMigrations } from "./db/migrate.js";
 import { createAuth } from "./lib/auth.js";
 
-function env(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    console.error(`Missing required environment variable ${name} (see .env.example)`);
-    process.exit(1);
-  }
-  return value;
+const root = fileURLToPath(new URL("..", import.meta.url));
+const dataDir = resolve(root, process.env.DATA_DIR ?? "data");
+const frontendDir = resolve(root, process.env.FRONTEND_DIR ?? "../doxxd-frontend/dist");
+const port = Number(process.env.PORT ?? 3000);
+
+mkdirSync(dataDir, { recursive: true });
+console.log("Starting DoXXd… (the very first start takes a few seconds)");
+
+// The key that signs login tokens. Made once and kept in the data folder.
+function loadJwtSecret(): string {
+  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
+  const file = resolve(dataDir, "jwt-secret");
+  if (!existsSync(file)) writeFileSync(file, randomBytes(48).toString("base64url"), { mode: 0o600 });
+  return readFileSync(file, "utf8").trim();
 }
 
-const jwtSecret = env("JWT_SECRET");
-if (jwtSecret.length < 32) {
-  console.error("JWT_SECRET must be at least 32 characters");
-  process.exit(1);
-}
+const { db } = createDb(resolve(dataDir, "db"));
+await runMigrations(db);
 
-const { db } = createDb(env("DATABASE_URL"));
+const hasFrontend = existsSync(resolve(frontendDir, "index.html"));
 const app = createApp({
   db,
-  auth: createAuth(jwtSecret),
+  auth: createAuth(loadJwtSecret()),
   corsOrigins: process.env.CORS_ORIGINS?.split(",").map((o) => o.trim()).filter(Boolean),
+  frontendDir: hasFrontend ? frontendDir : undefined,
 });
 
-const port = Number(process.env.PORT ?? 3000);
-serve({ fetch: app.fetch, port }, () => console.log(`DoXXd API listening on http://localhost:${port}`));
+serve({ fetch: app.fetch, port }, () => {
+  console.log(`\n  DoXXd is running → http://localhost:${port}`);
+  for (const nets of Object.values(networkInterfaces())) {
+    for (const net of nets ?? []) {
+      if (net.family === "IPv4" && !net.internal) console.log(`  On your network  → http://${net.address}:${port}`);
+    }
+  }
+  if (!hasFrontend) {
+    console.log(`\n  (API only: no website found at ${frontendDir}. Run "npm run setup" to build it.)`);
+  }
+  console.log(`\n  Data is saved in ${dataDir}. Press Ctrl+C to stop.\n`);
+});

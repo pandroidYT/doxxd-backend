@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
@@ -9,8 +10,10 @@ import { authRoutes } from "./routes/auth.js";
 import { postRoutes } from "./routes/posts.js";
 import { userRoutes } from "./routes/users.js";
 
-export function createApp(deps: Deps & { corsOrigins?: string[] }) {
+/** The API lives under /api. If `frontendDir` is given, the built website is served from everything else. */
+export function createApp(deps: Deps & { corsOrigins?: string[]; frontendDir?: string }) {
   const { db, auth } = deps;
+  const root = new Hono();
   const app = new Hono<AppEnv>();
 
   app.use("*", cors({ origin: deps.corsOrigins?.length ? deps.corsOrigins : "*" }));
@@ -35,12 +38,18 @@ export function createApp(deps: Deps & { corsOrigins?: string[] }) {
   app.route("/posts", postRoutes(deps));
   app.route("/", userRoutes(deps));
 
-  app.notFound((c) => c.json({ error: "Not found." }, 404));
+  app.all("*", (c) => c.json({ error: "Not found." }, 404));
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
     console.error(err);
     return c.json({ error: "Something went wrong on our end." }, 500);
   });
 
-  return app;
+  root.route("/api", app);
+  if (deps.frontendDir) {
+    root.use("*", serveStatic({ root: deps.frontendDir }));
+    // Any other path is a page in the single-page app.
+    root.get("*", serveStatic({ root: deps.frontendDir, path: "index.html" }));
+  }
+  return root;
 }
